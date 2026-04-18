@@ -1,0 +1,10 @@
+numpy
+pandas
+torch
+torchvision
+gradio
+safetensors
+transformers
+Pillow
+datasets
+einops
