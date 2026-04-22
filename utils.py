@@ -1,13 +1,12 @@
 import os
 import torch
+import requests
+import io
 from PIL import Image
 from safetensors.torch import load_file
-from datasets import load_from_disk
-from transformers import AutoModel, AutoProcessor
+from transformers import AutoModel
 
-# ----------------------------------------------------------------------
-# Global model cache (load once)
-# ----------------------------------------------------------------------
+# global model cache(need to load once)
 _embedding_model = None
 
 def get_embedding_model():
@@ -21,21 +20,27 @@ def get_embedding_model():
 
     model_name = "nvidia/llama-nemotron-embed-vl-1b-v2"
     revision = "062ffaa1e3d24a8a50bd6a7ac7b8e54103e1f01d"
-
-    # Choose attention implementation based on availability
+    
+    
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+    # float16 for GPU, float32 for CPU (Space Free Tier in our Huggingface)
+    dtype = torch.float16 if torch.cuda.is_available() else torch.float32
+    
+    # Choose attention implementation
     try:
-        attn_impl = "flash_attention_2"
-        _ = torch.backends.cuda.flash_sdp_enabled()  # just a check
+        attn_impl = "flash_attention_2" if torch.cuda.is_available() else "eager"
     except:
         attn_impl = "eager"
-
+    
+    print(f"Loading model on {device}...")
+    
     _embedding_model = AutoModel.from_pretrained(
         model_name,
-        revision=revision,
-        torch_dtype=torch.float16 if torch.cuda.is_available() else torch.float32,
-        trust_remote_code=True,
-        attn_implementation=attn_impl,
-        device_map="auto" if torch.cuda.is_available() else "cpu"
+        revision = revision,
+        dtype = dtype,
+        trust_remote_code = True,
+        attn_implementation = attn_impl,
+        device_map = device
     ).eval()
     return _embedding_model
 
@@ -49,10 +54,8 @@ def prepare_processor(modality, embedding_model):
         p_max_length = 2048
     elif modality == "image_text":
         p_max_length = 10240
-    elif modality == "text":
+    else:  # text
         p_max_length = 8192
-    else:
-        raise ValueError(f"Unknown modality: {modality}")
 
     embedding_model.processor.p_max_length = p_max_length
     embedding_model.processor.max_input_tiles = 6
@@ -68,20 +71,44 @@ class RecipeRetriever:
 
     def __init__(
         self,
-        dataset_path="data/dataset/",
-        embedding_path="data/embedding_tensors/all_recipes_image_text_embeddings.safetensors"
+        hf_dataset_repo="tiptoghosh/your-dataset-name", 
+        embedding_path="data/all_recipes_image_text_embeddings.safetensors"
     ):
-        # Load dataset from disk
-        self.dataset = load_from_disk(dataset_path)
-
-        # Load precomputed image_text embeddings
+        self.repo = hf_dataset_repo
+        
+        # Load local embeddings (only ~30-50MB, very fast)
+        if not os.path.exists(embedding_path):
+            raise FileNotFoundError(f"Missing embeddings at {embedding_path}")
+        
         emb_dict = load_file(embedding_path)
         self.target_embeddings = emb_dict["image_text_embeddings"]
-
-        # Move to appropriate device
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.target_embeddings = self.target_embeddings.to(self.device)
-
+        
+        # We don't load the dataset locally anymore!
+        self.dataset = None
+    
+    def _fetch_row_via_api(self, idx):
+        """Fetches a specific row from the HF Dataset Server without downloading the whole dataset."""
+        url = f"https://datasets-server.huggingface.co/rows?dataset={self.repo}&split=train&offset={idx}&length=1"
+        try:
+            response = requests.get(url, timeout=10)
+            data = response.json()
+            row_content = data["rows"][0]["row"]
+            
+            # Convert the image from the API format (usually a URL or dict) to PIL
+            # If the image is a dict with 'src', we fetch it
+            img_data = row_content["image"]
+            if isinstance(img_data, dict) and "src" in img_data:
+                img_response = requests.get(img_data["src"])
+                row_content["image"] = Image.open(io.BytesIO(img_response.content))
+            
+            return row_content
+        except Exception as e:
+            print(f"Error fetching row {idx}: {e}")
+            return None
+        
+        
     def _l2_normalize(self, x: torch.Tensor, eps: float = 1e-12) -> torch.Tensor:
         if not isinstance(x, torch.Tensor):
             x = torch.tensor(x)

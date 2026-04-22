@@ -1,12 +1,10 @@
 import gradio as gr
 from utils import RecipeRetriever
+import os 
 
-# ----------------------------------------------------------------------
-# Initialize the retriever once (caches model and dataset)
-# ----------------------------------------------------------------------
-print("Loading dataset and embeddings...")
+print("Initializing OmniChef-Nexus Retriever...")
 retriever = RecipeRetriever()
-print("Ready!")
+print("Retriever Ready!")
 
 
 def run_omni_search(text_query, image_query):
@@ -52,18 +50,14 @@ def run_omni_search(text_query, image_query):
     return gallery_items, recipe_details
 
 
-# ----------------------------------------------------------------------
-# Build Gradio interface
-# ----------------------------------------------------------------------
 with gr.Blocks(theme=gr.themes.Soft()) as demo:
     gr.Markdown("# 🍳 OmniChef‑Nexus: Multimodal Recipe RAG")
     gr.Markdown(
-        "Search for recipes using **text**, an **image**, or **both**!\n"
-        "The system uses NVIDIA's Llama Nemotron Embed VL model to find the best matches."
+        "Powered by **NVIDIA Llama Nemotron Embed VL**. Search by describing a dish or uploading ingredient photos."
     )
 
     with gr.Row():
-        with gr.Column(scale=1):
+        with gr.Column(scale = 1):
             text_input = gr.Textbox(
                 label="Describe what you want to cook...",
                 placeholder="e.g., 'A healthy chicken salad with avocado'"
@@ -72,8 +66,10 @@ with gr.Blocks(theme=gr.themes.Soft()) as demo:
                 label="Or upload a photo of ingredients",
                 type="pil"
             )
-            search_btn = gr.Button("Find Recipes", variant="primary")
-
+            with gr.Row():
+                clear_btn = gr.Button("Clear")
+                search_btn = gr.Button("Find Recipes", variant="primary")
+        
         with gr.Column(scale=2):
             result_gallery = gr.Gallery(
                 label="Top Matches",
@@ -82,17 +78,36 @@ with gr.Blocks(theme=gr.themes.Soft()) as demo:
                 object_fit="contain"
             )
 
-    gr.Markdown("## Detailed Instructions")
+    gr.Markdown("---")
     recipe_output = gr.Markdown("Search results will appear here...")
 
+    # Set up interactions
     search_btn.click(
         fn=run_omni_search,
         inputs=[text_input, image_input],
         outputs=[result_gallery, recipe_output]
     )
-
-# ----------------------------------------------------------------------
-# Launch (compatible with Hugging Face Spaces)
-# ----------------------------------------------------------------------
+    
+    # Allow 'Enter' key to trigger search
+    text_input.submit(
+        fn=run_omni_search,
+        inputs=[text_input, image_input],
+        outputs=[result_gallery, recipe_output]
+    )
+    
+    clear_btn.click(
+        lambda: [None, None, [], "Search results will appear here..."],
+        outputs=[text_input, image_input, result_gallery, recipe_output]
+    )
+    
+    gr.Examples(
+        examples=[
+            ["A refreshing summer salad with berries", None],
+            [None, "sample/example_ingredients.jpg"] 
+        ],
+        inputs=[text_input, image_input]
+    )
+    
+    
 if __name__ == "__main__":
-    demo.launch(server_name="0.0.0.0", server_port=7860)
+    demo.launch()

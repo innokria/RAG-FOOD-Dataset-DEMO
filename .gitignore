@@ -206,4 +206,11 @@ marimo/_static/
 marimo/_lsp/
 __marimo__/
 
-data
+# Ignore everything inside the data folder
+data/*
+# But do not ignore the subfolder where the embeddings live
+!data/embedding_tensors/
+# Ignore everything inside that subfolder
+data/embedding_tensors/*
+# Finally, un-ignore the specific safetensors file
+!data/embedding_tensors/all_recipes_image_text_embeddings.safetensors
