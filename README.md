@@ -1,5 +1,5 @@
-# OmniChef-Nexus
-OmniChef-VL-RAG is a multimodal retrieval-augmented generation (RAG) system designed for intelligent recipe understanding and interaction. The system supports both visual and textual inputs, enabling users to discover, explore, and discuss recipes through a unified AI-driven interface.
+# RAG-FOOD-DEMO
+RAG is a multimodal retrieval-augmented generation (RAG) system designed for intelligent recipe understanding and interaction. The system supports both visual and textual inputs, enabling users to discover, explore, and discuss recipes through a unified AI-driven interface.
 
 
 
